@@ -85,7 +85,7 @@
 [iulog]
   standard_name = iounit_of_log
   long_name = log output unit
-  units = 1
+  units = none
   dimensions = ()
   type = integer
   intent = in
