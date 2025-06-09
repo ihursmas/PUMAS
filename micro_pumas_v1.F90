@@ -619,7 +619,9 @@ subroutine micro_pumas_tend ( &
      frzimm,             frzcnt,             frzdep)
 
   use pumas_stochastic_collect_tau, only: ncd, pumas_stochastic_collect_tau_tend
-  use tau_neural_net_quantile,      only: tau_emulated_cloud_rain_interactions
+!+ IH
+!  use tau_neural_net_quantile,      only: tau_emulated_cloud_rain_interactions
+!- IH
   use ML_fixer_check,               only: ML_fixer_calc
 
   ! Constituent properties.
@@ -818,7 +820,7 @@ subroutine micro_pumas_tend ( &
   real(r8) :: qc(mgncol,nlev)      ! cloud liquid mixing ratio (kg/kg)
   real(r8) :: qi(mgncol,nlev)      ! cloud ice mixing ratio (kg/kg)
   real(r8) :: nc(mgncol,nlev)      ! cloud liquid number concentration (1/kg)
-  real(r8) :: ni(mgncol,nlev)      ! cloud liquid number concentration (1/kg)
+  real(r8) :: ni(mgncol,nlev)      ! cloud ice number concentration (1/kg)
   real(r8) :: qr(mgncol,nlev)      ! rain mixing ratio (kg/kg)
   real(r8) :: qs(mgncol,nlev)      ! snow mixing ratio (kg/kg)
   real(r8) :: nr(mgncol,nlev)      ! rain number concentration (1/kg)
@@ -1466,16 +1468,6 @@ subroutine micro_pumas_tend ( &
         nprc1(i,k)              = 0._r8
         pra(i,k)                = 0._r8
         npra(i,k)               = 0._r8
-        n0i(i,k)                = 0._r8
-        lami(i,k)               = 0._r8
-        n0s(i,k)                = 0._r8
-        lams(i,k)               = 0._r8
-        ninstsm(i,k)            = 0._r8
-        ninstgm(i,k)            = 0._r8
-        psacws(i,k)             = 0._r8
-        pracs(i,k)              = 0._r8
-        bergs(i,k)              = 0._r8
-        prds(i,k)               = 0._r8
      end do
   end do
   !$acc end parallel
@@ -2083,56 +2075,57 @@ subroutine micro_pumas_tend ( &
      end do
      !$acc end parallel
 
-  else if (trim(warm_rain) == 'emulated') then
-     ! JS - 08/22/2023: this code block only works on CPU
-
-     !$acc update self(qcic,ncic,qric,nric,rho,lcldm,precip_frac, &
-     !$acc             proc_rates%qctend_TAU,proc_rates%qrtend_TAU, &
-     !$acc             proc_rates%nctend_TAU,proc_rates%nrtend_TAU, &
-     !$acc             qc,nc,qr,nr,prc,nprc1,nprc,nragg)
-
-     do k=1,nlev
-        call tau_emulated_cloud_rain_interactions(qcic(1:mgncol,k), ncic(1:mgncol,k), &
-                                                  qric(1:mgncol,k), nric(1:mgncol,k), &
-                                                  rho(1:mgncol,k), lcldm(1:mgncol,k), &
-                                                  precip_frac(1:mgncol,k), mgncol, qsmall, &
-                                                  proc_rates%qctend_TAU(1:mgncol,k), &
-                                                  proc_rates%qrtend_TAU(1:mgncol,k), &
-                                                  proc_rates%nctend_TAU(1:mgncol,k), &
-                                                  proc_rates%nrtend_TAU(1:mgncol,k))
-
-        call ML_fixer_calc(mgncol, deltatin, qc(1:mgncol,k), nc(1:mgncol,k), &
-                           qr(1:mgncol,k), nr(1:mgncol,k), &
-                           proc_rates%qctend_TAU(1:mgncol,k),&
-                           proc_rates%nctend_TAU(1:mgncol,k), &
-                           proc_rates%qrtend_TAU(1:mgncol,k), &
-                           proc_rates%nrtend_TAU(1:mgncol,k), &
-                           proc_rates%ML_fixer(1:mgncol,k), &
-                           proc_rates%QC_fixer(1:mgncol,k), &
-                           proc_rates%NC_fixer(1:mgncol,k), &
-                           proc_rates%QR_fixer(1:mgncol,k), &
-                           proc_rates%NR_fixer(1:mgncol,k))
-
-        ! PUMAS expects prc and nprc1 (cloud rates) are positive
-        prc(1:mgncol,k)= -proc_rates%qctend_TAU(1:mgncol,k)
-        nprc1(1:mgncol,k)= -proc_rates%nctend_TAU(1:mgncol,k)
-
-        ! PUMAS expects nprc to be positive. Negative nrtend_TAU is from self
-        ! collection, so put it into nragg
-        do i=1,mgncol
-           if (proc_rates%nrtend_TAU(i,k).gt.0._r8) then
-              nprc(i,k)= proc_rates%nrtend_TAU(i,k)
-           else
-              nragg(i,k)= proc_rates%nrtend_TAU(i,k)
-           end if
-        end do
-
-     end do
-
-     !$acc update device(proc_rates%qctend_TAU,proc_rates%qrtend_TAU, &
-     !$acc               proc_rates%nctend_TAU,proc_rates%nrtend_TAU, &
-     !$acc               prc,nprc1,nprc,nragg)
-
+!+ IH
+!  else if (trim(warm_rain) == 'emulated') then
+!     ! JS - 08/22/2023: this code block only works on CPU
+!
+!     !$acc update self(qcic,ncic,qric,nric,rho,lcldm,precip_frac, &
+!     !$acc             proc_rates%qctend_TAU,proc_rates%qrtend_TAU, &
+!     !$acc             proc_rates%nctend_TAU,proc_rates%nrtend_TAU, &
+!     !$acc             qc,nc,qr,nr,prc,nprc1,nprc,nragg)
+!
+!     do k=1,nlev
+!        call tau_emulated_cloud_rain_interactions(qcic(1:mgncol,k), ncic(1:mgncol,k), &
+!                                                  qric(1:mgncol,k), nric(1:mgncol,k), &
+!                                                  rho(1:mgncol,k), lcldm(1:mgncol,k), &
+!                                                  precip_frac(1:mgncol,k), mgncol, qsmall, &
+!                                                  proc_rates%qctend_TAU(1:mgncol,k), &
+!                                                  proc_rates%qrtend_TAU(1:mgncol,k), &
+!                                                  proc_rates%nctend_TAU(1:mgncol,k), &
+!                                                  proc_rates%nrtend_TAU(1:mgncol,k))
+!
+!        call ML_fixer_calc(mgncol, deltatin, qc(1:mgncol,k), nc(1:mgncol,k), &
+!                           qr(1:mgncol,k), nr(1:mgncol,k), &
+!                           proc_rates%qctend_TAU(1:mgncol,k),&
+!                           proc_rates%nctend_TAU(1:mgncol,k), &
+!                           proc_rates%qrtend_TAU(1:mgncol,k), &
+!                           proc_rates%nrtend_TAU(1:mgncol,k), &
+!                           proc_rates%ML_fixer(1:mgncol,k), &
+!                           proc_rates%QC_fixer(1:mgncol,k), &
+!                           proc_rates%NC_fixer(1:mgncol,k), &
+!                           proc_rates%QR_fixer(1:mgncol,k), &
+!                           proc_rates%NR_fixer(1:mgncol,k))
+!
+!        ! PUMAS expects prc and nprc1 (cloud rates) are positive
+!        prc(1:mgncol,k)= -proc_rates%qctend_TAU(1:mgncol,k)
+!        nprc1(1:mgncol,k)= -proc_rates%nctend_TAU(1:mgncol,k)
+!
+!        ! PUMAS expects nprc to be positive. Negative nrtend_TAU is from self
+!        ! collection, so put it into nragg
+!        do i=1,mgncol
+!           if (proc_rates%nrtend_TAU(i,k).gt.0._r8) then
+!              nprc(i,k)= proc_rates%nrtend_TAU(i,k)
+!           else
+!              nragg(i,k)= proc_rates%nrtend_TAU(i,k)
+!           end if
+!        end do
+!
+!     end do
+!
+!     !$acc update device(proc_rates%qctend_TAU,proc_rates%qrtend_TAU, &
+!     !$acc               proc_rates%nctend_TAU,proc_rates%nrtend_TAU, &
+!     !$acc               prc,nprc1,nprc,nragg)
+!- IH
   end if
 
   ! Alternative autoconversion
@@ -2672,6 +2665,10 @@ subroutine micro_pumas_tend ( &
                npsacws(i,k)-nsubc(i,k)+npsacwg(i,k))*lcldm(i,k)*deltat
 
         if (dum.gt.nc(i,k)) then
+!+ IH
+! ratio = omsm * nc(i,k) / dum, where omsm = 1 - 1e-5, and
+! dum is provisional nc(i,k) that considers number concentration tendencies associated with immersion freezing, contact freezing, deposition, among others.
+!- IH
            ratio = nc(i,k)*rdeltat/((nprc1(i,k)+npra(i,k)+nnuccc(i,k)+nnucct(i,k)+&
                    npsacws(i,k)-nsubc(i,k)+npsacwg(i,k))*lcldm(i,k))*omsm
            npsacwg(i,k) = npsacwg(i,k)*ratio
@@ -2760,6 +2757,7 @@ subroutine micro_pumas_tend ( &
   if (do_cldice) then
      !$acc parallel vector_length(VLENS) default(present)
      !$acc loop gang vector collapse(2)
+
      do k=1,nlev
         do i=1,mgncol
            ! conservation of qi
@@ -2768,6 +2766,9 @@ subroutine micro_pumas_tend ( &
                 prai(i,k))*icldm(i,k)+(-qmultrg(i,k)-mnuccri(i,k))*precip_frac(i,k) &
                 -ice_sublim(i,k)-vap_dep(i,k)-berg(i,k)-mnuccd(i,k))*deltat
            if (dum.gt.qi(i,k)) then
+!+ IH
+! ratio = omsm / [(prci(i,k)+prai(i,k))*icldm(i,k)-ice_sublim(i,k)] * { qi(i,k)/deltat + vap_dep(i,k) + berg(i,k) + mnuccd(i,k) - [dum-(prci(i,k)+prai(i,k))*icldm(i,k)] }
+!- IH
               ratio = (qi(i,k)*rdeltat+vap_dep(i,k)+berg(i,k)+mnuccd(i,k)+ &
                    (mnuccc(i,k)+mnucct(i,k)+mnudep(i,k)+msacwi(i,k)+qmultg(i,k))*lcldm(i,k)+ &
                    (qmultrg(i,k)+mnuccri(i,k))*precip_frac(i,k))/ &
@@ -2788,6 +2789,9 @@ subroutine micro_pumas_tend ( &
                 nprai(i,k)-nsubi(i,k))*icldm(i,k)+(-nmultrg(i,k)-nnuccri(i,k))*precip_frac(i,k)- &
                 nnuccd(i,k))*deltat
            if (dum.gt.ni(i,k)) then
+!+ IH
+! ratio = omsm / [(nprci(i,k)+nprai(i,k)-nsubi(i,k))*icldm(i,k)] * { ni(i,k)/deltat + nnuccd(i,k) - [dum-(nprci(i,k)+nprai(i,k)-nsubi(i,k))*icldm(i,k)] }
+!- IH
               ratio = (ni(i,k)*rdeltat+nnuccd(i,k)+ &
                  (nnucct(i,k)+tmpfrz+nnudep(i,k)+nsacwi(i,k)+nmultg(i,k))*lcldm(i,k)+ &
                  (nnuccri(i,k)+nmultrg(i,k))*precip_frac(i,k))/ &
