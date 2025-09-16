@@ -3,7 +3,10 @@ module tau_neural_net_quantile
     use pumas_kinds,       only : r8=>kind_r8
 
     use module_neural_net, only : Dense, init_neural_net, load_quantile_scale_values
-    use module_neural_net, only : quantile_transform, quantile_inv_transform, neural_net_predict
+!+ IH
+!    use module_neural_net, only : quantile_transform, quantile_inv_transform, neural_net_predict
+    use module_neural_net, only : quantile_transform, quantile_inv_transform
+!- IH
 
     implicit none
     integer, parameter, public :: i8 = selected_int_kind(18)
@@ -65,10 +68,10 @@ contains
         real(r8), dimension(mgncol), intent(in) :: qc, qr, nc, nr, rho, lcldm, precip_frac
         real(r8), intent(in) :: q_small
         real(r8), dimension(mgncol), intent(out) :: qc_tend, qr_tend, nc_tend, nr_tend
-        integer(i8) :: i
+        integer(i8) :: i, j
         real(r8), dimension(batch_size, num_inputs) :: nn_inputs, nn_quantile_inputs
         real(r8), dimension(batch_size, num_outputs) :: nn_quantile_outputs, nn_outputs
-        real(r8), parameter :: dt = 1800.0_r8
+        real(r8), parameter :: dt = 1800.0
         do i = 1, mgncol
             if (qc(i) >= q_small) then
                 nn_inputs(1, 1) = qc(i)
@@ -79,7 +82,9 @@ contains
                 nn_inputs(1, 6) = precip_frac(i)
                 nn_inputs(1, 7) = lcldm(i)
                 call quantile_transform(nn_inputs, input_scale_values, nn_quantile_inputs)
-                call neural_net_predict(nn_quantile_inputs, q_all, nn_quantile_outputs)
+!+ IH
+!                call neural_net_predict(nn_quantile_inputs, q_all, nn_quantile_outputs)
+!- IH
                 call quantile_inv_transform(nn_quantile_outputs, output_scale_values, nn_outputs)
                 qr_tend(i) = (nn_outputs(1, 1) - qr(i)) / dt
                 qr_tend(i) = (nn_outputs(1, 1) - qr(i)) / dt
