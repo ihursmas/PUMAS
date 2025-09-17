@@ -8,6 +8,7 @@ use pumas_kinds,   only: r8=>kind_r8
 
 !> \section arg_table_proc_rates_type  Argument Table
 !! \htmlinclude proc_rates_type.html
+!!
   type, public :: proc_rates_type
 
     real(r8), allocatable :: prodsnow(:,:)     ! production of snow (kg/kg/s)
