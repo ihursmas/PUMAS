@@ -12,6 +12,7 @@ contains
 
   !> \section arg_table_micro_pumas_ccpp_init Argument Table
   !! \htmlinclude micro_pumas_ccpp_init.html
+  !!
   subroutine micro_pumas_ccpp_init(gravit, rair, rh2o, cpair, tmelt, latvap, latice,     &
                                    rhmini, iulog, micro_mg_do_hail, micro_mg_do_graupel, &
                                    microp_uniform, do_cldice, use_hetfrz_classnuc,       &
@@ -35,10 +36,14 @@ contains
                                    micro_mg_effi_factor_in,     micro_mg_iaccr_factor_in,     &
                                    micro_mg_max_nicons_in, micro_mg_ncnst_in,                 &
                                    micro_mg_ninst_in, micro_mg_ngnst_in, micro_mg_nrnst_in,   &
-                                   micro_mg_nsnst_in, errmsg, errcode)
+!+ IH: enhancement factor testing
+!                                   micro_mg_nsnst_in, errmsg, errcode)
+                                   micro_mg_nsnst_in, micro_mg_freeze_enhan_fact_in,          &
+                                   micro_mg_icemult_enhan_fact_in, errmsg, errcode)
+!- IH
 
   !External dependencies:
-  use ccpp_kinds,        only: kind_phys
+  use machine,           only: kind_phys
   use micro_pumas_v1,    only: micro_pumas_init
   use pumas_kinds,       only: pumas_r8=>kind_r8
 
@@ -104,6 +109,10 @@ contains
   real(kind_phys), intent(in) :: micro_mg_effi_factor_in      !ice effective radius enhancement factor            (1)
   real(kind_phys), intent(in) :: micro_mg_iaccr_factor_in     !ice accretion factor                               (1)
   real(kind_phys), intent(in) :: micro_mg_max_nicons_in       !max allowed ice number concentration               (m-3)
+!+ IH: enhancement factor testing
+  real(kind_phys), intent(in) :: micro_mg_freeze_enhan_fact_in      ! freezing enhancment factor
+  real(kind_phys), intent(in) :: micro_mg_icemult_enhan_fact_in     ! ice multiplication enhancment factor
+!- IH
 
   !In-cloud droplet number concentration if micro_mg_nccons is True (m-3):
   real(kind_phys), intent(in) :: micro_mg_ncnst_in
@@ -134,6 +143,10 @@ contains
   real(pumas_r8) :: micro_mg_effi_factor      !ice effective radius enhancement factor            (1)
   real(pumas_r8) :: micro_mg_iaccr_factor     !ice accretion factor                               (1)
   real(pumas_r8) :: micro_mg_max_nicons       !max allowed ice number concentration               (m-3)
+!+ IH: enhancement factor testing 
+  real(pumas_r8) :: micro_mg_freeze_enhan_fact     ! freezing enhancment factor
+  real(pumas_r8) :: micro_mg_icemult_enhan_fact    ! ice multiplication enhancment factor
+!- IH
 
   !In-cloud droplet number concentration if micro_mg_nccons is True (m-3):
   real(pumas_r8) :: micro_mg_ncnst
@@ -171,6 +184,10 @@ contains
   micro_mg_ngnst            = real(micro_mg_ngnst_in, pumas_r8)
   micro_mg_nrnst            = real(micro_mg_nrnst_in, pumas_r8)
   micro_mg_nsnst            = real(micro_mg_nsnst_in, pumas_r8)
+!+ IH: enhancement factor testing
+  micro_mg_freeze_enhan_fact   = real(micro_mg_freeze_enhan_fact_in, pumas_r8)
+  micro_mg_icemult_enhan_fact  = real(micro_mg_icemult_enhan_fact_in, pumas_r8)
+!- IH
 
   !Call PUMAS initialization routine:
   call micro_pumas_init( &
@@ -193,7 +210,12 @@ contains
            micro_mg_ninst, micro_mg_ngcons, micro_mg_ngnst, &
            micro_mg_nrcons, micro_mg_nrnst, micro_mg_nscons, micro_mg_nsnst, &
            stochastic_emulated_filename_quantile, stochastic_emulated_filename_input_scale, &
-           stochastic_emulated_filename_output_scale, iulog, pumas_errstring)
+!+ IH: enhancement factor testing
+!           stochastic_emulated_filename_output_scale, iulog, pumas_errstring)
+           stochastic_emulated_filename_output_scale,                     &
+           micro_mg_freeze_enhan_fact_in, micro_mg_icemult_enhan_fact_in, &
+           iulog, pumas_errstring)
+!- IH
 
   !Set error code to non-zero value if PUMAS returns an error message:
   if (trim(pumas_errstring) /= "") then
@@ -205,6 +227,7 @@ contains
 
   !> \section arg_table_micro_pumas_ccpp_run Argument Table
   !! \htmlinclude micro_pumas_ccpp_run.html
+  !!
   subroutine micro_pumas_ccpp_run(micro_ncol, micro_nlev, micro_nlevp1,             &
                                   micro_dust_nbins, micro_timestep_in,              &
                                   micro_airT_in, micro_airq_in, micro_cldliq_in,    &
@@ -265,7 +288,7 @@ contains
                                   errmsg, errcode)
 
     !External dependencies:
-    use ccpp_kinds,        only: kind_phys
+    use machine,           only: kind_phys
     use micro_pumas_v1,    only: micro_pumas_tend
     use micro_pumas_diags, only: proc_rates_type
     use pumas_kinds,       only: pumas_r8=>kind_r8
@@ -282,211 +305,211 @@ contains
     !Host model state variables:
 
     !Microphysics Air temperature (K)
-    real(kind_phys), intent(in) :: micro_airT_in(:,:)
+    real(kind_phys), intent(in) :: micro_airT_in(micro_ncol, micro_nlev)
     !Microphysics Water vapor mixing ratio wrt moist air and condensed water (kg kg-1)
-    real(kind_phys), intent(in) :: micro_airq_in(:,:)
+    real(kind_phys), intent(in) :: micro_airq_in(micro_ncol, micro_nlev)
     !Microphysics cloud liquid water mixing ratio wrt moist air and condensed water (kg kg-1)
-    real(kind_phys), intent(in) :: micro_cldliq_in(:,:)
+    real(kind_phys), intent(in) :: micro_cldliq_in(micro_ncol, micro_nlev)
     !Microphysics cloud ice mixing ratio wrt moist air and condensed water (kg kg-1)
-    real(kind_phys), intent(in) :: micro_cldice_in(:,:)
+    real(kind_phys), intent(in) :: micro_cldice_in(micro_ncol, micro_nlev)
     !microphysics mass number concentration of cloud liquid water wrt moist air and condensed water (kg-1)
-    real(kind_phys), intent(in) :: micro_numliq_in(:,:)
+    real(kind_phys), intent(in) :: micro_numliq_in(micro_ncol, micro_nlev)
     !microphysics mass number concentration of cloud ice wrt moist air and condensed water (kg-1)
-    real(kind_phys), intent(in) :: micro_numice_in(:,:)
+    real(kind_phys), intent(in) :: micro_numice_in(micro_ncol, micro_nlev)
     !microphysics rain mixing ratio wrt moist air and condensed water (kg kg-1)
-    real(kind_phys), intent(in) :: micro_rainliq_in(:,:)
+    real(kind_phys), intent(in) :: micro_rainliq_in(micro_ncol, micro_nlev)
     !microphysics snow mixing ratio wrt moist air and condensed water (kg kg-1)
-    real(kind_phys), intent(in) :: micro_snowice_in(:,:)
+    real(kind_phys), intent(in) :: micro_snowice_in(micro_ncol, micro_nlev)
     !microphysics mass number concentration of rain wrt moist air and condensed water (kg-1)
-    real(kind_phys), intent(in) :: micro_numrain_in(:,:)
+    real(kind_phys), intent(in) :: micro_numrain_in(micro_ncol, micro_nlev)
     !microphysics mass number concentration of snow wrt moist air and condensed water (kg-1)
-    real(kind_phys), intent(in) :: micro_numsnow_in(:,:)
+    real(kind_phys), intent(in) :: micro_numsnow_in(micro_ncol, micro_nlev)
     !microphysics graupel mixing ratio wrt moist air and condensed water (kg kg-1)
-    real(kind_phys), intent(in) :: micro_graupice_in(:,:)
+    real(kind_phys), intent(in) :: micro_graupice_in(micro_ncol, micro_nlev)
     !microphysics mass number concentration of graupel wrt moist air and condensed water (kg-1)
-    real(kind_phys), intent(in) :: micro_numgraup_in(:,:)
+    real(kind_phys), intent(in) :: micro_numgraup_in(micro_ncol, micro_nlev)
     !microphysics relative variance of cloud water (1)
-    real(kind_phys), intent(in) :: micro_relvar_in(:,:)
+    real(kind_phys), intent(in) :: micro_relvar_in(micro_ncol, micro_nlev)
     !microphysics accretion enhancement factor (1)
-    real(kind_phys), intent(in) :: micro_accre_enhan_in(:,:)
+    real(kind_phys), intent(in) :: micro_accre_enhan_in(micro_ncol, micro_nlev)
     !microphysics air pressure (Pa)
-    real(kind_phys), intent(in) :: micro_pmid_in(:,:)
+    real(kind_phys), intent(in) :: micro_pmid_in(micro_ncol, micro_nlev)
     !microphysics air pressure thickness (Pa)
-    real(kind_phys), intent(in) :: micro_pdel_in(:,:)
+    real(kind_phys), intent(in) :: micro_pdel_in(micro_ncol, micro_nlev)
     !microphysics air pressure at interfaces (Pa)
-    real(kind_phys), intent(in) :: micro_pint_in(:,:)
+    real(kind_phys), intent(in) :: micro_pint_in(micro_ncol, micro_nlevp1)
     !microphysics stratiform cloud area fraction (fraction)
-    real(kind_phys), intent(in) :: micro_strat_cldfrc_in(:,:)
+    real(kind_phys), intent(in) :: micro_strat_cldfrc_in(micro_ncol, micro_nlev)
     !microphysics stratiform cloud liquid area fraction (fraction)
-    real(kind_phys), intent(in) :: micro_strat_liq_cldfrc_in(:,:)
+    real(kind_phys), intent(in) :: micro_strat_liq_cldfrc_in(micro_ncol, micro_nlev)
     !microphysics stratiform cloud ice area fraction (fraction)
-    real(kind_phys), intent(in) :: micro_strat_ice_cldfrc_in(:,:)
+    real(kind_phys), intent(in) :: micro_strat_ice_cldfrc_in(micro_ncol, micro_nlev)
     !microphysics subgrid cloud water saturation scaling factor (1)
-    real(kind_phys), intent(in) :: micro_qsatfac_in(:,:)
+    real(kind_phys), intent(in) :: micro_qsatfac_in(micro_ncol, micro_nlev)
     !microphysics tendency of activated ice nuclei mass number concentration (kg-1 s-1)
-    real(kind_phys), intent(in) :: micro_naai_in(:,:)
+    real(kind_phys), intent(in) :: micro_naai_in(micro_ncol, micro_nlev)
     !microphysics tendency of activated cloud condensation nuclei mass number concentration (kg-1 s-1)
-    real(kind_phys), intent(in) :: micro_npccn_in(:,:)
+    real(kind_phys), intent(in) :: micro_npccn_in(micro_ncol, micro_nlev)
     !microphysics dust radii by size bin  (m)
-    real(kind_phys), intent(in) :: micro_rndst_in(:,:,:)
+    real(kind_phys), intent(in) :: micro_rndst_in(micro_ncol, micro_nlev, micro_dust_nbins)
     !microphysics dust number concentration by size bin (m-3)
-    real(kind_phys), intent(in) :: micro_nacon_in(:,:,:)
+    real(kind_phys), intent(in) :: micro_nacon_in(micro_ncol, micro_nlev, micro_dust_nbins)
     !microphysics tendency of snow mixing ratio wrt moist air and condensed water from external microphysics (kg kg-1 s-1)
-    real(kind_phys), intent(in) :: micro_snowice_tend_external_in(:,:)
+    real(kind_phys), intent(in) :: micro_snowice_tend_external_in(micro_ncol, micro_nlev)
     !microphysics tendency of mass number concentration of snow wrt moist air and condensed water from external microphysics
     !(kg-1 s-1)
-    real(kind_phys), intent(in) :: micro_numsnow_tend_external_in(:,:)
+    real(kind_phys), intent(in) :: micro_numsnow_tend_external_in(micro_ncol, micro_nlev)
     !microphysics effective radius of stratiform cloud ice particle from external microphysics (m)
-    real(kind_phys), intent(in) :: micro_effi_external_in(:,:)
+    real(kind_phys), intent(in) :: micro_effi_external_in(micro_ncol, micro_nlev)
     !microphysics tendency of cloud liquid droplet number concentration due to immersion freezing (cm-3)
-    real(kind_phys), intent(in) :: micro_frzimm_in(:,:)
+    real(kind_phys), intent(in) :: micro_frzimm_in(micro_ncol, micro_nlev)
     !microphysics tendency of cloud liquid droplet number concentration due to contact freezing (cm-3)
-    real(kind_phys), intent(in) :: micro_frzcnt_in(:,:)
+    real(kind_phys), intent(in) :: micro_frzcnt_in(micro_ncol, micro_nlev)
     !microphysics tendency of cloud ice number concentration due to deposition nucleation (cm-3)
-    real(kind_phys), intent(in) :: micro_frzdep_in(:,:)
+    real(kind_phys), intent(in) :: micro_frzdep_in(micro_ncol, micro_nlev)
 
     !Subroutine output arguments:
 
     !microphysics direct conversion rate of stratiform cloud water to precipitation (s-1)
-    real(kind_phys), intent(out) :: micro_qcsinksum_rate1ord_out(:,:)
+    real(kind_phys), intent(out) :: micro_qcsinksum_rate1ord_out(micro_ncol, micro_nlev)
     !microphysics tendency of dry air enthalpy at constant pressure (J kg-1 s-1)
-    real(kind_phys), intent(out) :: micro_airT_tend_out(:,:)
+    real(kind_phys), intent(out) :: micro_airT_tend_out(micro_ncol, micro_nlev)
     !microphysics tendency of water vapor mixing ratio wrt moist air and condensed water (kg kg-1 s-1)
-    real(kind_phys), intent(out) :: micro_airq_tend_out(:,:)
+    real(kind_phys), intent(out) :: micro_airq_tend_out(micro_ncol, micro_nlev)
     !microphysics tendency of cloud liquid water mixing ratio wrt moist air and condensed water (kg kg-1 s-1)
-    real(kind_phys), intent(out) :: micro_cldliq_tend_out(:,:)
+    real(kind_phys), intent(out) :: micro_cldliq_tend_out(micro_ncol, micro_nlev)
     !microphysics tendency of cloud ice mixing ratio wrt moist air and condensed water (kg kg-1 s-1)
-    real(kind_phys), intent(out) :: micro_cldice_tend_out(:,:)
+    real(kind_phys), intent(out) :: micro_cldice_tend_out(micro_ncol, micro_nlev)
     !microphysics tendency of mass number concentration of cloud liquid water wrt moist air and condensed water (kg-1 s-1)
-    real(kind_phys), intent(out) :: micro_numliq_tend_out(:,:)
+    real(kind_phys), intent(out) :: micro_numliq_tend_out(micro_ncol, micro_nlev)
     !microphysics tendency of mass number concentration of cloud ice wrt moist air and condensed water (kg-1 s-1)
-    real(kind_phys), intent(out) :: micro_numice_tend_out(:,:)
+    real(kind_phys), intent(out) :: micro_numice_tend_out(micro_ncol, micro_nlev)
     !microphysics tendency of rain mixing ratio wrt moist air and condensed water (kg kg-1 s-1)
-    real(kind_phys), intent(out) :: micro_rainliq_tend_out(:,:)
+    real(kind_phys), intent(out) :: micro_rainliq_tend_out(micro_ncol, micro_nlev)
     !microphysics tendency of snow mixing ratio wrt moist air and condensed water (kg kg-1 s-1)
-    real(kind_phys), intent(out) :: micro_snowice_tend_out(:,:)
+    real(kind_phys), intent(out) :: micro_snowice_tend_out(micro_ncol, micro_nlev)
     !microphysics tendency of mass number concentration of rain wrt moist air and condensed water (kg-1 s-1)
-    real(kind_phys), intent(out) :: micro_numrain_tend_out(:,:)
+    real(kind_phys), intent(out) :: micro_numrain_tend_out(micro_ncol, micro_nlev)
     !microphysics tendency of mass number concentration of snow wrt moist air and condensed water (kg-1 s-1)
-    real(kind_phys), intent(out) :: micro_numsnow_tend_out(:,:)
+    real(kind_phys), intent(out) :: micro_numsnow_tend_out(micro_ncol, micro_nlev)
     !microphysics tendency of graupel mixing ratio wrt moist air and condensed water (kg kg-1 s-1)
-    real(kind_phys), intent(out) :: micro_graupice_tend_out(:,:)
+    real(kind_phys), intent(out) :: micro_graupice_tend_out(micro_ncol, micro_nlev)
     !microphysics tendency of mass number concentration of graupel wrt moist air and condensed water (kg-1 s-1)
-    real(kind_phys), intent(out) :: micro_numgraup_tend_out(:,:)
+    real(kind_phys), intent(out) :: micro_numgraup_tend_out(micro_ncol, micro_nlev)
     !microphysics effective radius of stratiform cloud liquid water particle (um)
-    real(kind_phys), intent(out) :: micro_effc_out(:,:)
+    real(kind_phys), intent(out) :: micro_effc_out(micro_ncol, micro_nlev)
     !microphysics effective radius of stratiform cloud liquid water particle assuming droplet number concentration of 1e8 kg-1 (um)
-    real(kind_phys), intent(out) :: micro_effc_fn_out(:,:)
+    real(kind_phys), intent(out) :: micro_effc_fn_out(micro_ncol, micro_nlev)
     !microphysics effective radius of stratiform cloud ice particle (um)
-    real(kind_phys), intent(out) :: micro_effi_out(:,:)
+    real(kind_phys), intent(out) :: micro_effi_out(micro_ncol, micro_nlev)
     !microphysics cloud ice surface area density (cm2 cm-3)
-    real(kind_phys), intent(out) :: micro_sadice_out(:,:)
+    real(kind_phys), intent(out) :: micro_sadice_out(micro_ncol, micro_nlev)
     !microphysics snow surface area density (cm2 cm-3)
-    real(kind_phys), intent(out) :: micro_sadsnow_out(:,:)
+    real(kind_phys), intent(out) :: micro_sadsnow_out(micro_ncol, micro_nlev)
     !microphysics LWE large scale precipitation rate at surface (m s-1)
-    real(kind_phys), intent(out) :: micro_prect_out(:)
+    real(kind_phys), intent(out) :: micro_prect_out(micro_ncol)
     !microphysics LWE large scale snowfall rate at surface (m s-1)
-    real(kind_phys), intent(out) :: micro_preci_out(:)
+    real(kind_phys), intent(out) :: micro_preci_out(micro_ncol)
     !microphysics precipitation evaporation rate wrt moist air and condensed water (kg kg-1 s-1)
-    real(kind_phys), intent(out) :: micro_prec_evap_out(:,:)
+    real(kind_phys), intent(out) :: micro_prec_evap_out(micro_ncol, micro_nlev)
     !microphysics precipitation evaporation area (fraction)
-    real(kind_phys), intent(out) :: micro_am_evap_st_out(:,:)
+    real(kind_phys), intent(out) :: micro_am_evap_st_out(micro_ncol, micro_nlev)
     !microphysics precipitation production rate wrt moist air and condensed water (kg kg-1 s-1)
-    real(kind_phys), intent(out) :: micro_prec_prod_out(:,:)
+    real(kind_phys), intent(out) :: micro_prec_prod_out(micro_ncol, micro_nlev)
     !microphysics condensation minus evaporation rate of in-cloud ice wrt moist air and condensed water (kg kg-1 s-1)
-    real(kind_phys), intent(out) :: micro_cmeice_out(:,:)
+    real(kind_phys), intent(out) :: micro_cmeice_out(micro_ncol, micro_nlev)
     !microphysics effective diameter of stratiform cloud ice particles for radiation (um)
-    real(kind_phys), intent(out) :: micro_deffi_out(:,:)
+    real(kind_phys), intent(out) :: micro_deffi_out(micro_ncol, micro_nlev)
     !microphysics cloud particle size distribution shape parameter (1)
-    real(kind_phys), intent(out) :: micro_pgamrad_out(:,:)
+    real(kind_phys), intent(out) :: micro_pgamrad_out(micro_ncol, micro_nlev)
     !microphysics cloud particle size distribution slope parameter (1)
-    real(kind_phys), intent(out) :: micro_lamcrad_out(:,:)
+    real(kind_phys), intent(out) :: micro_lamcrad_out(micro_ncol, micro_nlev)
     !microphysics snow mixing ratio wrt moist air and condensed water of new state in precipitating fraction of gridcell (kg kg-1)
-    real(kind_phys), intent(out) :: micro_snowice_in_prec_out(:,:)
+    real(kind_phys), intent(out) :: micro_snowice_in_prec_out(micro_ncol, micro_nlev)
     !microphysics snow scaled diameter (m)
-    real(kind_phys), intent(out) :: micro_scaled_diam_snow_out(:,:)
+    real(kind_phys), intent(out) :: micro_scaled_diam_snow_out(micro_ncol, micro_nlev)
     !microphysics graupel mixing ratio wrt moist air and condensed water of new state in precipitating fraction of gridcell (kg kg-1)
-    real(kind_phys), intent(out) :: micro_graupice_in_prec_out(:,:)
+    real(kind_phys), intent(out) :: micro_graupice_in_prec_out(micro_ncol, micro_nlev)
     !microphysics graupel number concentration of new state in precipitating fraction of gridcell (m-3)
-    real(kind_phys), intent(out) :: micro_numgraup_vol_in_prec_out(:,:)
+    real(kind_phys), intent(out) :: micro_numgraup_vol_in_prec_out(micro_ncol, micro_nlev)
     !microphysics graupel scaled diameter (m)
-    real(kind_phys), intent(out) :: micro_scaled_diam_graup_out(:,:)
+    real(kind_phys), intent(out) :: micro_scaled_diam_graup_out(micro_ncol, micro_nlev)
     !microphysics cloud liquid sedimentation flux (kg m-2 s-1)
-    real(kind_phys), intent(out) :: micro_lflx_out(:,:)
+    real(kind_phys), intent(out) :: micro_lflx_out(micro_ncol, micro_nlevp1)
     !microphysics cloud ice sedimentation flux (kg m-2 s-1)
-    real(kind_phys), intent(out) :: micro_iflx_out(:,:)
+    real(kind_phys), intent(out) :: micro_iflx_out(micro_ncol, micro_nlevp1)
     !microphysics graupel sedimentation flux (kg m-2 s-1)
-    real(kind_phys), intent(out) :: micro_gflx_out(:,:)
+    real(kind_phys), intent(out) :: micro_gflx_out(micro_ncol, micro_nlevp1)
     !microphysics rain sedimentation flux (kg m-2 s-1)
-    real(kind_phys), intent(out) :: micro_rflx_out(:,:)
+    real(kind_phys), intent(out) :: micro_rflx_out(micro_ncol, micro_nlevp1)
     !microphysics snow sedimentation flux (kg m-2 s-1)
-    real(kind_phys), intent(out) :: micro_sflx_out(:,:)
+    real(kind_phys), intent(out) :: micro_sflx_out(micro_ncol, micro_nlevp1)
     !microphysics rain mixing ratio wrt moist air and condensed water of new state in precipitating fraction of gridcell (kg kg-1)
-    real(kind_phys), intent(out) :: micro_rainliq_in_prec_out(:,:)
+    real(kind_phys), intent(out) :: micro_rainliq_in_prec_out(micro_ncol, micro_nlev)
     !microphysics effective radius of stratiform rain particle (um)
-    real(kind_phys), intent(out) :: micro_reff_rain_out(:,:)
+    real(kind_phys), intent(out) :: micro_reff_rain_out(micro_ncol, micro_nlev)
     !microphysics effective radius of stratiform snow particle (um)
-    real(kind_phys), intent(out) :: micro_reff_snow_out(:,:)
+    real(kind_phys), intent(out) :: micro_reff_snow_out(micro_ncol, micro_nlev)
     !microphysics effective radius of stratiform graupel particle (um)
-    real(kind_phys), intent(out) :: micro_reff_grau_out(:,:)
+    real(kind_phys), intent(out) :: micro_reff_grau_out(micro_ncol, micro_nlev)
     !microphysics rain number concentration of new state in precipitating fraction of gridcell (m-3)
-    real(kind_phys), intent(out) :: micro_numrain_vol_in_prec_out(:,:)
+    real(kind_phys), intent(out) :: micro_numrain_vol_in_prec_out(micro_ncol, micro_nlev)
     !microphysics snow number concentration of new state in precipitating fraction of gridcell (m-3)
-    real(kind_phys), intent(out) :: micro_numsnow_vol_in_prec_out(:,:)
+    real(kind_phys), intent(out) :: micro_numsnow_vol_in_prec_out(micro_ncol, micro_nlev)
     !microphysics analytic radar reflectivity at 94 GHz in precipitating fraction of gridcell (dBZ)
-    real(kind_phys), intent(out) :: micro_refl_out(:,:)
+    real(kind_phys), intent(out) :: micro_refl_out(micro_ncol, micro_nlev)
     !microphysics analytic radar reflectivity at 94 GHz (dBZ)
-    real(kind_phys), intent(out) :: micro_arefl_out(:,:)
+    real(kind_phys), intent(out) :: micro_arefl_out(micro_ncol, micro_nlev)
     !microphysics analytic radar reflectivity z factor at 94 GHz (mm6 m-3)
-    real(kind_phys), intent(out) :: micro_areflz_out(:,:)
+    real(kind_phys), intent(out) :: micro_areflz_out(micro_ncol, micro_nlev)
     !microphysics fraction of gridcell with nonzero radar reflectivity (fraction)
-    real(kind_phys), intent(out) :: micro_frefl_out(:,:)
+    real(kind_phys), intent(out) :: micro_frefl_out(micro_ncol, micro_nlev)
     !microphysics analytic radar reflectivity at 94 GHz with CloudSat thresholds in precipitating fraction of gridcell (dBZ)
-    real(kind_phys), intent(out) :: micro_csrfl_out(:,:)
+    real(kind_phys), intent(out) :: micro_csrfl_out(micro_ncol, micro_nlev)
     !microphysics analytic radar reflectivity at 94 GHz with CloudSat thresholds (dBZ)
-    real(kind_phys), intent(out) :: micro_acsrfl_out(:,:)
+    real(kind_phys), intent(out) :: micro_acsrfl_out(micro_ncol, micro_nlev)
     !microphysics fraction of gridcell with nonzero radar reflectivity with CloudSat thresholds (fraction)
-    real(kind_phys), intent(out) :: micro_fcsrfl_out(:,:)
+    real(kind_phys), intent(out) :: micro_fcsrfl_out(micro_ncol, micro_nlev)
     !microphysics analytic radar reflectivity at 10 cm wavelength (dBZ)
-    real(kind_phys), intent(out) :: micro_refl10cm_out(:,:)
+    real(kind_phys), intent(out) :: micro_refl10cm_out(micro_ncol, micro_nlev)
     !microphysics analytic radar reflectivity z factor at 10 cm wavelength (mm6 m-3)
-    real(kind_phys), intent(out) :: micro_reflz10cm_out(:,:)
+    real(kind_phys), intent(out) :: micro_reflz10cm_out(micro_ncol, micro_nlev)
     !microphysics effective radius of stratiform cloud liquid plus rain particles (m)
-    real(kind_phys), intent(out) :: micro_rercld_out(:,:)
+    real(kind_phys), intent(out) :: micro_rercld_out(micro_ncol, micro_nlev)
     !microphysics available ice nuclei number concentration of new state (m-3)
-    real(kind_phys), intent(out) :: micro_ncai_out(:,:)
+    real(kind_phys), intent(out) :: micro_ncai_out(micro_ncol, micro_nlev)
     !microphysics available cloud condensation nuclei number concentration of new state (m-3)
-    real(kind_phys), intent(out) :: micro_ncal_out(:,:)
+    real(kind_phys), intent(out) :: micro_ncal_out(micro_ncol, micro_nlev)
     !microphysics rain mixing ratio wrt moist air and condensed water of new state (kg kg-1)
-    real(kind_phys), intent(out) :: micro_rainliq_out(:,:)
+    real(kind_phys), intent(out) :: micro_rainliq_out(micro_ncol, micro_nlev)
     !microphysics snow mixing ratio wrt moist air and condensed water of new state (kg kg-1)
-    real(kind_phys), intent(out) :: micro_snowice_out(:,:)
+    real(kind_phys), intent(out) :: micro_snowice_out(micro_ncol, micro_nlev)
     !microphysics rain number concentration of new state (m-3)
-    real(kind_phys), intent(out) :: micro_numrain_vol_out(:,:)
+    real(kind_phys), intent(out) :: micro_numrain_vol_out(micro_ncol, micro_nlev)
     !microphysics snow number concentration of new state in precipitating fraction of gridcell (m-3)
-    real(kind_phys), intent(out) :: micro_numsnow_vol_out(:,:)
+    real(kind_phys), intent(out) :: micro_numsnow_vol_out(micro_ncol, micro_nlev)
     !microphysics average diameter of stratiform rain particle (m)
-    real(kind_phys), intent(out) :: micro_diam_rain_out(:,:)
+    real(kind_phys), intent(out) :: micro_diam_rain_out(micro_ncol, micro_nlev)
     !microphysics average diameter of stratiform snow particle (m)
-    real(kind_phys), intent(out) :: micro_diam_snow_out(:,:)
+    real(kind_phys), intent(out) :: micro_diam_snow_out(micro_ncol, micro_nlev)
     !microphysics graupel mixing ratio wrt moist air and condensed water of new state (kg kg-1)
-    real(kind_phys), intent(out) :: micro_graupice_out(:,:)
+    real(kind_phys), intent(out) :: micro_graupice_out(micro_ncol, micro_nlev)
     !microphysics graupel number concentration of new state (m-3)
-    real(kind_phys), intent(out) :: micro_numgraup_vol_out(:,:)
+    real(kind_phys), intent(out) :: micro_numgraup_vol_out(micro_ncol, micro_nlev)
     !microphysics average diameter of stratiform graupel particle (m)
-    real(kind_phys), intent(out) :: micro_diam_graup_out(:,:)
+    real(kind_phys), intent(out) :: micro_diam_graup_out(micro_ncol, micro_nlev)
     !microphysics fraction of gridcell with graupel (fraction)
-    real(kind_phys), intent(out) :: micro_freq_graup_out(:,:)
+    real(kind_phys), intent(out) :: micro_freq_graup_out(micro_ncol, micro_nlev)
     !microphysics fraction of gridcell with snow (fraction)
-    real(kind_phys), intent(out) :: micro_freq_snow_out(:,:)
+    real(kind_phys), intent(out) :: micro_freq_snow_out(micro_ncol, micro_nlev)
     !microphysics fraction of gridcell with rain (fraction)
-    real(kind_phys), intent(out) :: micro_freq_rain_out(:,:)
+    real(kind_phys), intent(out) :: micro_freq_rain_out(micro_ncol, micro_nlev)
     !microphysics fraction of frozen water to total condensed water (fraction)
-    real(kind_phys), intent(out) :: micro_frac_ice_out(:,:)
+    real(kind_phys), intent(out) :: micro_frac_ice_out(micro_ncol, micro_nlev)
     !microphysics fraction of cloud liquid tendency applied to state (fraction)
-    real(kind_phys), intent(out) :: micro_frac_cldliq_tend_out(:,:)
+    real(kind_phys), intent(out) :: micro_frac_cldliq_tend_out(micro_ncol, micro_nlev)
     !microphysics rain evaporation rate wrt moist air and condensed water (kg kg-1 s-1)
-    real(kind_phys), intent(out) :: micro_rain_evap_out(:,:)
+    real(kind_phys), intent(out) :: micro_rain_evap_out(micro_ncol, micro_nlev)
     !microphysics process rates (none)
     type(proc_rates_type), intent(inout) :: micro_proc_rates_inout
 

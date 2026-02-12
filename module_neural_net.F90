@@ -19,37 +19,39 @@ module module_neural_net
 
 contains
 
-    subroutine apply_dense(input, layer, output)
-        ! Description: Pass a set of input data through a single dense layer and nonlinear activation function
-        !
-        ! Inputs:
-        ! layer (input): a single Dense object
-        ! input (input): a 2D array where the rows are different examples and
-        !   the columns are different model inputs
-        !
-        ! Output:
-        ! output: output of the dense layer as a 2D array with shape (number of inputs, number of neurons)
-        real(kind=r8), dimension(:, :), intent(in) :: input
-        type(Dense), intent(in) :: layer
-        real(kind=r8), dimension(size(input, 1), layer%output_size), intent(out) :: output
-        real(kind=r8), dimension(size(input, 1), layer%output_size) :: dense_output
-        integer :: i, j, num_examples
-        real(kind=r8) :: alpha, beta
-        external :: dgemm
-        alpha = 1
-        beta = 1
-        dense_output = 0
-        output = 0
-        num_examples = size(input, 1)
-        call dgemm('n', 'n', num_examples, layer%output_size, layer%input_size, &
-            alpha, input, num_examples, layer%weights, layer%input_size, beta, dense_output, num_examples)
-        do i=1, num_examples
-            do j=1, layer%output_size
-                dense_output(i, j) = dense_output(i, j) + layer%bias(j)
-            end do
-        end do
-        call apply_activation(dense_output, layer%activation, output)
-    end subroutine apply_dense
+!+ IH: Due to the failure of using the external function 'dgemm', I comment out the subroutines that use sub 'apply_dense' and subsequent subs
+!    subroutine apply_dense(input, layer, output)
+!        ! Description: Pass a set of input data through a single dense layer and nonlinear activation function
+!        !
+!        ! Inputs:
+!        ! layer (input): a single Dense object
+!        ! input (input): a 2D array where the rows are different examples and
+!        !   the columns are different model inputs
+!        !
+!        ! Output:
+!        ! output: output of the dense layer as a 2D array with shape (number of inputs, number of neurons)
+!        real(kind=r8), dimension(:, :), intent(in) :: input
+!        type(Dense), intent(in) :: layer
+!        real(kind=r8), dimension(size(input, 1), layer%output_size), intent(out) :: output
+!        real(kind=r8), dimension(size(input, 1), layer%output_size) :: dense_output
+!        integer :: i, j, num_examples
+!        real(kind=r8) :: alpha, beta
+!        external :: dgemm
+!        alpha = 1
+!        beta = 1
+!        dense_output = 0
+!        output = 0
+!        num_examples = size(input, 1)
+!        call dgemm('n', 'n', num_examples, layer%output_size, layer%input_size, &
+!            alpha, input, num_examples, layer%weights, layer%input_size, beta, dense_output, num_examples)
+!        do i=1, num_examples
+!            do j=1, layer%output_size
+!                dense_output(i, j) = dense_output(i, j) + layer%bias(j)
+!            end do
+!        end do
+!        call apply_activation(dense_output, layer%activation, output)
+!    end subroutine apply_dense
+!- IH
 
     subroutine apply_activation(input, activation_type, output)
         ! Description: Apply a nonlinear activation function to a given array of input values.
@@ -331,55 +333,57 @@ contains
         end do
     end subroutine quantile_inv_transform
 
-    subroutine neural_net_predict(input, neural_net_model, prediction)
-        ! neural_net_predict
-        ! Description: generate prediction from neural network model for an arbitrary set of input values
-        !
-        ! Args:
-        ! input (input): 2D array of input values. Each row is a separate instance and each column is a model input.
-        ! neural_net_model (input): Array of type(Dense) objects
-        ! prediction (output): The prediction of the neural network as a 2D array of dimension (examples, outputs)
-        real(kind=r8), intent(in) :: input(:, :)
-        type(Dense), intent(in) :: neural_net_model(:)
-        real(kind=r8), intent(out) :: prediction(size(input, 1), neural_net_model(size(neural_net_model))%output_size)
-        integer :: bi, i, j, num_layers
-        integer :: batch_size
-        integer :: input_size
-        integer :: batch_index_size
-        integer, allocatable :: batch_indices(:)
-        type(DenseData) :: neural_net_data(size(neural_net_model))
-        input_size = size(input, 1)
-        num_layers = size(neural_net_model)
-        batch_size = neural_net_model(1)%batch_size
-        batch_index_size = input_size / batch_size
-        allocate(batch_indices(batch_index_size))
-        i = 1
-        do bi=batch_size, input_size, batch_size
-            batch_indices(i) = bi
-            i = i + 1
-        end do
-        do j=1, num_layers
-            allocate(neural_net_data(j)%input(batch_size, neural_net_model(j)%input_size))
-            allocate(neural_net_data(j)%output(batch_size, neural_net_model(j)%output_size))
-        end do
-        batch_indices(batch_index_size) = input_size
-        do bi=1, batch_index_size
-            neural_net_data(1)%input = input(batch_indices(bi)-batch_size+1:batch_indices(bi), :)
-            do i=1, num_layers - 1
-                call apply_dense(neural_net_data(i)%input, neural_net_model(i), neural_net_data(i)%output)
-                neural_net_data(i + 1)%input = neural_net_data(i)%output
-            end do
-            call apply_dense(neural_net_data(num_layers)%input, neural_net_model(num_layers), &
-                             neural_net_data(num_layers)%output)
-            prediction(batch_indices(bi)-batch_size + 1:batch_indices(bi), :) = &
-                    neural_net_data(num_layers)%output
-        end do
-        do j=1, num_layers
-            deallocate(neural_net_data(j)%input)
-            deallocate(neural_net_data(j)%output)
-        end do
-        deallocate(batch_indices)
-    end subroutine neural_net_predict
+!+ IH: Comment out this subroutine because it calls sub 'apply_dense' (which uses the external function 'dgemm')
+!    subroutine neural_net_predict(input, neural_net_model, prediction)
+!        ! neural_net_predict
+!        ! Description: generate prediction from neural network model for an arbitrary set of input values
+!        !
+!        ! Args:
+!        ! input (input): 2D array of input values. Each row is a separate instance and each column is a model input.
+!        ! neural_net_model (input): Array of type(Dense) objects
+!        ! prediction (output): The prediction of the neural network as a 2D array of dimension (examples, outputs)
+!        real(kind=r8), intent(in) :: input(:, :)
+!        type(Dense), intent(in) :: neural_net_model(:)
+!        real(kind=r8), intent(out) :: prediction(size(input, 1), neural_net_model(size(neural_net_model))%output_size)
+!        integer :: bi, i, j, num_layers
+!        integer :: batch_size
+!        integer :: input_size
+!        integer :: batch_index_size
+!        integer, allocatable :: batch_indices(:)
+!        type(DenseData) :: neural_net_data(size(neural_net_model))
+!        input_size = size(input, 1)
+!        num_layers = size(neural_net_model)
+!        batch_size = neural_net_model(1)%batch_size
+!        batch_index_size = input_size / batch_size
+!        allocate(batch_indices(batch_index_size))
+!        i = 1
+!        do bi=batch_size, input_size, batch_size
+!            batch_indices(i) = bi
+!            i = i + 1
+!        end do
+!        do j=1, num_layers
+!            allocate(neural_net_data(j)%input(batch_size, neural_net_model(j)%input_size))
+!            allocate(neural_net_data(j)%output(batch_size, neural_net_model(j)%output_size))
+!        end do
+!        batch_indices(batch_index_size) = input_size
+!        do bi=1, batch_index_size
+!            neural_net_data(1)%input = input(batch_indices(bi)-batch_size+1:batch_indices(bi), :)
+!            do i=1, num_layers - 1
+!                call apply_dense(neural_net_data(i)%input, neural_net_model(i), neural_net_data(i)%output)
+!                neural_net_data(i + 1)%input = neural_net_data(i)%output
+!            end do
+!            call apply_dense(neural_net_data(num_layers)%input, neural_net_model(num_layers), &
+!                             neural_net_data(num_layers)%output)
+!            prediction(batch_indices(bi)-batch_size + 1:batch_indices(bi), :) = &
+!                    neural_net_data(num_layers)%output
+!        end do
+!        do j=1, num_layers
+!            deallocate(neural_net_data(j)%input)
+!            deallocate(neural_net_data(j)%output)
+!        end do
+!        deallocate(batch_indices)
+!    end subroutine neural_net_predict
+!- IH
 
     subroutine standard_scaler_transform(input_data, scale_values, transformed_data, errstring)
         ! Perform z-score normalization of input_data table. Equivalent to scikit-learn StandardScaler.

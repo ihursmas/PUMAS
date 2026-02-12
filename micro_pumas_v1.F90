@@ -282,6 +282,10 @@ real(r8)           :: micro_mg_vtrms_factor
 real(r8)           :: micro_mg_effi_factor
 real(r8)           :: micro_mg_iaccr_factor
 real(r8)           :: micro_mg_max_nicons
+!+ IH: enhancement factor testing 
+real(r8)           :: micro_mg_freeze_enhan_fact     ! freezing enhancment factor
+real(r8)           :: micro_mg_icemult_enhan_fact    ! ice multiplication enhancment factor
+!- IH
 
 logical            :: remove_supersat      ! If true, remove supersaturation after sedimentation loop
 character(len=16)  :: warm_rain            ! 'tau','emulated','sb2001' or 'kk2000'
@@ -338,6 +342,9 @@ subroutine micro_pumas_init( &
      nrcons_in, nrnst_in, nscons_in, nsnst_in, &
      stochastic_emulated_filename_quantile, stochastic_emulated_filename_input_scale, &
      stochastic_emulated_filename_output_scale, &
+!+ IH: enhancement factor testing
+     micro_mg_freeze_enhan_fact_in, micro_mg_icemult_enhan_fact_in, &
+!- IH
      iulog, errstring)
 
   use micro_pumas_utils,            only: micro_pumas_utils_init
@@ -388,6 +395,10 @@ subroutine micro_pumas_init( &
   real(r8),         intent(in)  :: micro_mg_effi_factor_in    !factor for ice effective radius
   real(r8),         intent(in)  :: micro_mg_iaccr_factor_in  ! ice accretion factor
   real(r8),         intent(in)  :: micro_mg_max_nicons_in ! maximum number ice crystal allowed
+!+ IH: enhancement factor testing
+  real(r8),         intent(in)  :: micro_mg_freeze_enhan_fact_in      ! freezing enhancment factor
+  real(r8),         intent(in)  :: micro_mg_icemult_enhan_fact_in     ! ice multiplication enhancment factor
+!- IH
 
   logical,  intent(in)  ::  remove_supersat_in ! If true, remove supersaturation after sedimentation loop
   character(len=*),  intent(in)  ::  warm_rain_in
@@ -467,6 +478,10 @@ subroutine micro_pumas_init( &
   warm_rain                = warm_rain_in
   do_implicit_fall   = micro_mg_implicit_fall_in
   accre_sees_auto = micro_mg_accre_sees_auto_in
+!+ IH: enhancement factor testing
+  micro_mg_freeze_enhan_fact   =  micro_mg_freeze_enhan_fact_in
+  micro_mg_icemult_enhan_fact   =  micro_mg_icemult_enhan_fact_in
+!- IH
 
   nccons = nccons_in
   nicons = nicons_in
@@ -619,7 +634,9 @@ subroutine micro_pumas_tend ( &
      frzimm,             frzcnt,             frzdep)
 
   use pumas_stochastic_collect_tau, only: ncd, pumas_stochastic_collect_tau_tend
-  use tau_neural_net_quantile,      only: tau_emulated_cloud_rain_interactions
+!+ IH: Disabling the use of neural network function for now; it should be fixed later...
+!  use tau_neural_net_quantile,      only: tau_emulated_cloud_rain_interactions
+!- IH
   use ML_fixer_check,               only: ML_fixer_calc
 
   ! Constituent properties.
@@ -818,7 +835,7 @@ subroutine micro_pumas_tend ( &
   real(r8) :: qc(mgncol,nlev)      ! cloud liquid mixing ratio (kg/kg)
   real(r8) :: qi(mgncol,nlev)      ! cloud ice mixing ratio (kg/kg)
   real(r8) :: nc(mgncol,nlev)      ! cloud liquid number concentration (1/kg)
-  real(r8) :: ni(mgncol,nlev)      ! cloud liquid number concentration (1/kg)
+  real(r8) :: ni(mgncol,nlev)      ! cloud ice number concentration (1/kg)
   real(r8) :: qr(mgncol,nlev)      ! rain mixing ratio (kg/kg)
   real(r8) :: qs(mgncol,nlev)      ! snow mixing ratio (kg/kg)
   real(r8) :: nr(mgncol,nlev)      ! rain number concentration (1/kg)
@@ -1717,7 +1734,7 @@ subroutine micro_pumas_tend ( &
      do i=1,mgncol
         if (qc(i,k) >= qsmall) then
            nc(i,k) = max(nc(i,k) + npccn(i,k)*deltat, 0._r8)
-           ncal(i,k) = npccn(i,k)
+           ncal(i,k) = npccn(i,k)      
         else
            ncal(i,k) = 0._r8
         end if
@@ -1770,6 +1787,7 @@ subroutine micro_pumas_tend ( &
               end if
            end if
         end if
+
      end do
   end do
   !$acc end parallel
@@ -2083,56 +2101,57 @@ subroutine micro_pumas_tend ( &
      end do
      !$acc end parallel
 
-  else if (trim(warm_rain) == 'emulated') then
-     ! JS - 08/22/2023: this code block only works on CPU
-
-     !$acc update self(qcic,ncic,qric,nric,rho,lcldm,precip_frac, &
-     !$acc             proc_rates%qctend_TAU,proc_rates%qrtend_TAU, &
-     !$acc             proc_rates%nctend_TAU,proc_rates%nrtend_TAU, &
-     !$acc             qc,nc,qr,nr,prc,nprc1,nprc,nragg)
-
-     do k=1,nlev
-        call tau_emulated_cloud_rain_interactions(qcic(1:mgncol,k), ncic(1:mgncol,k), &
-                                                  qric(1:mgncol,k), nric(1:mgncol,k), &
-                                                  rho(1:mgncol,k), lcldm(1:mgncol,k), &
-                                                  precip_frac(1:mgncol,k), mgncol, qsmall, &
-                                                  proc_rates%qctend_TAU(1:mgncol,k), &
-                                                  proc_rates%qrtend_TAU(1:mgncol,k), &
-                                                  proc_rates%nctend_TAU(1:mgncol,k), &
-                                                  proc_rates%nrtend_TAU(1:mgncol,k))
-
-        call ML_fixer_calc(mgncol, deltatin, qc(1:mgncol,k), nc(1:mgncol,k), &
-                           qr(1:mgncol,k), nr(1:mgncol,k), &
-                           proc_rates%qctend_TAU(1:mgncol,k),&
-                           proc_rates%nctend_TAU(1:mgncol,k), &
-                           proc_rates%qrtend_TAU(1:mgncol,k), &
-                           proc_rates%nrtend_TAU(1:mgncol,k), &
-                           proc_rates%ML_fixer(1:mgncol,k), &
-                           proc_rates%QC_fixer(1:mgncol,k), &
-                           proc_rates%NC_fixer(1:mgncol,k), &
-                           proc_rates%QR_fixer(1:mgncol,k), &
-                           proc_rates%NR_fixer(1:mgncol,k))
-
-        ! PUMAS expects prc and nprc1 (cloud rates) are positive
-        prc(1:mgncol,k)= -proc_rates%qctend_TAU(1:mgncol,k)
-        nprc1(1:mgncol,k)= -proc_rates%nctend_TAU(1:mgncol,k)
-
-        ! PUMAS expects nprc to be positive. Negative nrtend_TAU is from self
-        ! collection, so put it into nragg
-        do i=1,mgncol
-           if (proc_rates%nrtend_TAU(i,k).gt.0._r8) then
-              nprc(i,k)= proc_rates%nrtend_TAU(i,k)
-           else
-              nragg(i,k)= proc_rates%nrtend_TAU(i,k)
-           end if
-        end do
-
-     end do
-
-     !$acc update device(proc_rates%qctend_TAU,proc_rates%qrtend_TAU, &
-     !$acc               proc_rates%nctend_TAU,proc_rates%nrtend_TAU, &
-     !$acc               prc,nprc1,nprc,nragg)
-
+!+ IH
+!  else if (trim(warm_rain) == 'emulated') then
+!     ! JS - 08/22/2023: this code block only works on CPU
+!
+!     !$acc update self(qcic,ncic,qric,nric,rho,lcldm,precip_frac, &
+!     !$acc             proc_rates%qctend_TAU,proc_rates%qrtend_TAU, &
+!     !$acc             proc_rates%nctend_TAU,proc_rates%nrtend_TAU, &
+!     !$acc             qc,nc,qr,nr,prc,nprc1,nprc,nragg)
+!
+!     do k=1,nlev
+!        call tau_emulated_cloud_rain_interactions(qcic(1:mgncol,k), ncic(1:mgncol,k), &
+!                                                  qric(1:mgncol,k), nric(1:mgncol,k), &
+!                                                  rho(1:mgncol,k), lcldm(1:mgncol,k), &
+!                                                  precip_frac(1:mgncol,k), mgncol, qsmall, &
+!                                                  proc_rates%qctend_TAU(1:mgncol,k), &
+!                                                  proc_rates%qrtend_TAU(1:mgncol,k), &
+!                                                  proc_rates%nctend_TAU(1:mgncol,k), &
+!                                                  proc_rates%nrtend_TAU(1:mgncol,k))
+!
+!        call ML_fixer_calc(mgncol, deltatin, qc(1:mgncol,k), nc(1:mgncol,k), &
+!                           qr(1:mgncol,k), nr(1:mgncol,k), &
+!                           proc_rates%qctend_TAU(1:mgncol,k),&
+!                           proc_rates%nctend_TAU(1:mgncol,k), &
+!                           proc_rates%qrtend_TAU(1:mgncol,k), &
+!                           proc_rates%nrtend_TAU(1:mgncol,k), &
+!                           proc_rates%ML_fixer(1:mgncol,k), &
+!                           proc_rates%QC_fixer(1:mgncol,k), &
+!                           proc_rates%NC_fixer(1:mgncol,k), &
+!                           proc_rates%QR_fixer(1:mgncol,k), &
+!                           proc_rates%NR_fixer(1:mgncol,k))
+!
+!        ! PUMAS expects prc and nprc1 (cloud rates) are positive
+!        prc(1:mgncol,k)= -proc_rates%qctend_TAU(1:mgncol,k)
+!        nprc1(1:mgncol,k)= -proc_rates%nctend_TAU(1:mgncol,k)
+!
+!        ! PUMAS expects nprc to be positive. Negative nrtend_TAU is from self
+!        ! collection, so put it into nragg
+!        do i=1,mgncol
+!           if (proc_rates%nrtend_TAU(i,k).gt.0._r8) then
+!              nprc(i,k)= proc_rates%nrtend_TAU(i,k)
+!           else
+!              nragg(i,k)= proc_rates%nrtend_TAU(i,k)
+!           end if
+!        end do
+!
+!     end do
+!
+!     !$acc update device(proc_rates%qctend_TAU,proc_rates%qrtend_TAU, &
+!     !$acc               proc_rates%nctend_TAU,proc_rates%nrtend_TAU, &
+!     !$acc               prc,nprc1,nprc,nragg)
+!- IH
   end if
 
   ! Alternative autoconversion
@@ -2303,6 +2322,25 @@ subroutine micro_pumas_tend ( &
         ! heterogeneous freezing of cloud water via Bigg, 1953
         !----------------------------------------------
         call immersion_freezing(microp_uniform, t, pgam, lamc, qcic, ncic, relvar, mnuccc, nnuccc, mgncol*nlev)
+
+!+ IH
+!+++ test: If using prescribed INP that presumably covers the INP of immersion freezing ('frzimm'), comment out the calling of 'immersion_freezing' above
+!!        call immersion_freezing(microp_uniform, t, pgam, lamc, qcic, ncic, relvar, mnuccc, nnuccc, mgncol*nlev)
+!        do k=1,nlev
+!           do i=1,mgncol
+!              mi0l(i,k) = qcic(i,k)/max(ncic(i,k), 1.0e6_r8/rho(i,k))
+!              mi0l(i,k) = max(mi0l_min, mi0l(i,k))
+!              if (qcic(i,k) >= qsmall) then
+!                 nnuccc(i,k) = frzimm(i,k)*1.0e6_r8/rho(i,k)
+!                 mnuccc(i,k) = nnuccc(i,k)*mi0l(i,k)
+!              else
+!                 nnuccc(i,k) = 0._r8
+!                 mnuccc(i,k) = 0._r8
+!              end if
+!           end do
+!        end do
+!--- test
+!- IH
 
         ! make sure number of droplets frozen does not exceed available ice nuclei concentration
         ! this prevents 'runaway' droplet freezing
@@ -2586,6 +2624,21 @@ subroutine micro_pumas_tend ( &
      !$acc end parallel
   end if
 
+!+ IH: enhancement factor testing
+  do k=1,nlev
+     do i=1,mgncol
+        ! mixing ratios
+        mnuccc(i,k) = mnuccc(i,k)*micro_mg_freeze_enhan_fact
+        mnucct(i,k) = mnucct(i,k)*micro_mg_freeze_enhan_fact
+        msacwi(i,k) = msacwi(i,k)*micro_mg_icemult_enhan_fact
+        qmultg(i,k) = qmultg(i,k)*micro_mg_icemult_enhan_fact
+        ! number concentrations
+        nnuccc(i,k) = nnuccc(i,k)*micro_mg_freeze_enhan_fact
+        nnucct(i,k) = nnucct(i,k)*micro_mg_freeze_enhan_fact
+     end do
+  end do
+!- IH
+
   !$acc parallel vector_length(VLENS) default(present)
   !$acc loop gang vector collapse(2)
   do k=1,nlev
@@ -2606,6 +2659,13 @@ subroutine micro_pumas_tend ( &
            ratio = qc(i,k)*rdeltat/((prc(i,k)+pra(i,k)+mnuccc(i,k)+mnucct(i,k)+ &
                 msacwi(i,k)+psacws(i,k)+bergs(i,k)+qmultg(i,k)+psacwg(i,k)+pgsacw(i,k))*lcldm(i,k)+&
                 berg(i,k))*omsm
+!+ IH: The following code seems necessary to avoid ratio = infinity for CCPP-SCM-PUMAS to complete the 7-day MOSAiC test case
+!      Commenting out this part results in a crash at a certain point (Evelyn D. Grell); it needs further checks...
+! ratio = qc(i,k) * (1. - 1.e-5) / dum
+           if ( dum .eq. 0._r8 ) then
+              ratio = 0._r8
+           end if
+!- IH
            qmultg(i,k)=qmultg(i,k)*ratio
            psacwg(i,k)=psacwg(i,k)*ratio
            pgsacw(i,k)=pgsacw(i,k)*ratio
@@ -2674,6 +2734,12 @@ subroutine micro_pumas_tend ( &
         if (dum.gt.nc(i,k)) then
            ratio = nc(i,k)*rdeltat/((nprc1(i,k)+npra(i,k)+nnuccc(i,k)+nnucct(i,k)+&
                    npsacws(i,k)-nsubc(i,k)+npsacwg(i,k))*lcldm(i,k))*omsm
+!+ IH: The following code seems necessary to avoid ratio = infinity for CCPP-SCM-PUMAS to complete a test case
+! ratio = nc(i,k) * (1. - 1.e-5) / dum
+           if ( dum .eq. 0._r8 ) then
+              ratio = 0._r8
+           end if
+!- IH
            npsacwg(i,k) = npsacwg(i,k)*ratio
            nprc1(i,k)   = nprc1(i,k)*ratio
            npra(i,k)    = npra(i,k)*ratio
@@ -2696,6 +2762,7 @@ subroutine micro_pumas_tend ( &
               end if
            end if
         end if
+
      end do
   end do
   !$acc end parallel
@@ -2715,6 +2782,13 @@ subroutine micro_pumas_tend ( &
            ratio = (qr(i,k)*rdeltat+(pra(i,k)+prc(i,k))*lcldm(i,k))/   &
                 precip_frac(i,k)/(-pre(i,k)+pracs(i,k)+mnuccr(i,k)+mnuccri(i,k) &
                 +qmultrg(i,k)+pracg(i,k)+pgracs(i,k))*omsm
+!+ IH: The following code seems necessary to avoid ratio = infinity for CCPP-SCM-PUMAS to complete a test case
+! dum*rdeltat + (pra(i,k)+prc(i,k))*lcldm(i,k) = (-pre(i,k)+pracs(i,k)+mnuccr(i,k)+mnuccri(i,k)+qmultrg(i,k)+pracg(i,k)+pgracs(i,k))*precip_frac(i,k)
+! ratio = (qr(i,k)*rdeltat+(pra(i,k)+prc(i,k))*lcldm(i,k)) * (1. - 1.e-5) / (dum*rdeltat+(pra(i,k)+prc(i,k))*lcldm(i,k))
+           if ( precip_frac(i,k) .eq. 0._r8 .or. (dum*rdeltat+(pra(i,k)+prc(i,k))*lcldm(i,k)) .eq. 0._r8 ) then
+              ratio = 0._r8
+           end if
+!- IH
            qmultrg(i,k)= qmultrg(i,k)*ratio
            pracg(i,k)=pracg(i,k)*ratio
            pgracs(i,k)=pgracs(i,k)*ratio
@@ -2744,7 +2818,13 @@ subroutine micro_pumas_tend ( &
         if (dum.gt.nr(i,k) .and. tmpnr.gt.0._r8 .and. tmpp.gt.0._r8 .and. precip_frac(i,k).gt.0._r8) then
            ratio = (nr(i,k)*rdeltat+nprc(i,k)*lcldm(i,k))/precip_frac(i,k)/ &
                 (-nsubr(i,k)+npracs(i,k)+nnuccr(i,k)+nnuccri(i,k)-nragg(i,k)+npracg(i,k)+ngracs(i,k))*omsm
-
+!+ IH: The following code seems necessary to avoid ratio = infinity for CCPP-SCM-PUMAS to complete a test case
+! dum*rdeltat + nprc(i,k)*lcldm(i,k) = (-nsubr(i,k)+npracs(i,k)+nnuccr(i,k)+nnuccri(i,k)-nragg(i,k)+npracg(i,k)+ngracs(i,k))*precip_frac(i,k)
+! ratio = (nr(i,k)*rdeltat+nprc(i,k)*lcldm(i,k)) * (1. - 1.e-5) / (dum*rdeltat+nprc(i,k)*lcldm(i,k))
+           if ( (dum*rdeltat+nprc(i,k)*lcldm(i,k)) .eq. 0._r8 ) then
+              ratio = 0._r8
+           end if
+!- IH
            npracg(i,k)=npracg(i,k)*ratio
            ngracs(i,k)=ngracs(i,k)*ratio
            nragg(i,k)=nragg(i,k)*ratio
@@ -2772,6 +2852,15 @@ subroutine micro_pumas_tend ( &
                    (mnuccc(i,k)+mnucct(i,k)+mnudep(i,k)+msacwi(i,k)+qmultg(i,k))*lcldm(i,k)+ &
                    (qmultrg(i,k)+mnuccri(i,k))*precip_frac(i,k))/ &
                    ((prci(i,k)+prai(i,k))*icldm(i,k)-ice_sublim(i,k))*omsm
+!+ IH: The following code seems necessary to avoid ratio = infinity for CCPP-SCM-PUMAS to complete a test case
+! -dum*rdeltat = vap_dep(i,k)+berg(i,k)+mnuccd(i,k) + (mnuccc(i,k)+mnucct(i,k)+mnudep(i,k)+msacwi(i,k)+qmultg(i,k))*lcldm(i,k) +
+!               (qmultrg(i,k)+mnuccri(i,k))*precip_frac(i,k) - (prci(i,k)+ prai(i,k))*icldm(i,k) + ice_sublim(i,k)
+! ratio = (qi(i,k)*rdeltat - dum*rdeltat + (prci(i,k)+prai(i,k))*icldm(i,k) - ice_sublim(i,k) ) * (1. - 1.e-5) / ( (prci(i,k)+prai(i,k))*icldm(i,k) - ice_sublim(i,k) )
+!       ~ (qi(i,k)-dum)*rdeltat/( (prci(i,k)+prai(i,k))*icldm(i,k) - ice_sublim(i,k) ) + 1.
+           if ( ((prci(i,k)+prai(i,k))*icldm(i,k)-ice_sublim(i,k)) .eq. 0._r8 ) then
+              ratio = 0._r8
+           end if
+!- IH
               prci(i,k) = prci(i,k)*ratio
               prai(i,k) = prai(i,k)*ratio
               ice_sublim(i,k) = ice_sublim(i,k)*ratio
@@ -2792,6 +2881,11 @@ subroutine micro_pumas_tend ( &
                  (nnucct(i,k)+tmpfrz+nnudep(i,k)+nsacwi(i,k)+nmultg(i,k))*lcldm(i,k)+ &
                  (nnuccri(i,k)+nmultrg(i,k))*precip_frac(i,k))/ &
                  ((nprci(i,k)+nprai(i,k)-nsubi(i,k))*icldm(i,k))*omsm
+!+ IH: The following code seems necessary to avoid ratio = infinity for CCPP-SCM-PUMAS to complete a test case
+              if ( ((nprci(i,k)+nprai(i,k)-nsubi(i,k))*icldm(i,k)) .eq. 0._r8 ) then
+                 ratio = 0._r8
+              end if
+!- IH
               nprci(i,k) = nprci(i,k)*ratio
               nprai(i,k) = nprai(i,k)*ratio
               nsubi(i,k) = nsubi(i,k)*ratio
@@ -2822,11 +2916,21 @@ subroutine micro_pumas_tend ( &
               ratio = (qs(i,k)*rdeltat+(prai(i,k)+prci(i,k))*icldm(i,k)+ &
                    (bergs(i,k)+psacws(i,k))*lcldm(i,k)+vap_deps(i,k)+pracs(i,k)*precip_frac(i,k))/ &
                    precip_frac(i,k)/(psacr(i,k)-prds(i,k))*omsm
+!+ IH: The following code seems necessary to avoid ratio = infinity for CCPP-SCM-PUMAS to complete a test case
+              if ( precip_frac(i,k) .eq. 0._r8 .or. (psacr(i,k)-prds(i,k)) .eq. 0._r8 ) then
+                 ratio = 0._r8
+              end if
+!- IH
               psacr(i,k)=psacr(i,k)*ratio
            else
               ratio = (qs(i,k)*rdeltat+(prai(i,k)+prci(i,k))*icldm(i,k)+ &
                    (bergs(i,k)+psacws(i,k))*lcldm(i,k)+vap_deps(i,k)+(pracs(i,k)+mnuccr(i,k))*precip_frac(i,k))/ &
                    precip_frac(i,k)/(-prds(i,k))*omsm
+!+ IH: The following code seems necessary to avoid ratio = infinity for CCPP-SCM-PUMAS to complete a test case
+              if ( precip_frac(i,k) .eq. 0._r8 .or. prds(i,k) .eq. 0._r8 ) then
+                 ratio = 0._r8
+              end if
+!- IH
            end if
            prds(i,k)=prds(i,k)*ratio
         end if
@@ -2845,12 +2949,22 @@ subroutine micro_pumas_tend ( &
            if (do_hail .or. do_graupel) then
               ratio = (ns(i,k)*rdeltat+nprci(i,k)*icldm(i,k))/precip_frac(i,k)/ &
                    (-nsubs(i,k)-nsagg(i,k)+ngracs(i,k)+lcldm(i,k)/precip_frac(i,k)*nscng(i,k))*omsm
+!+ IH: The following code seems necessary to avoid ratio = infinity for CCPP-SCM-PUMAS to complete a test case
+              if ( precip_frac(i,k) .eq. 0._r8 .or. (-nsubs(i,k)-nsagg(i,k)+ngracs(i,k)+lcldm(i,k)/precip_frac(i,k)*nscng(i,k)) .eq. 0._r8 ) then
+                 ratio = 0._r8
+              end if
+!- IH
               nscng(i,k)=nscng(i,k)*ratio
               ngracs(i,k)=ngracs(i,k)*ratio
            else
               ratio = (ns(i,k)*rdeltat+nnuccr(i,k)* &
                    precip_frac(i,k)+nprci(i,k)*icldm(i,k))/precip_frac(i,k)/ &
                    (-nsubs(i,k)-nsagg(i,k))*omsm
+!+ IH: The following code seems necessary to avoid ratio = infinity for CCPP-SCM-PUMAS to complete a test case
+              if ( precip_frac(i,k) .eq. 0._r8 .or. (-nsubs(i,k)-nsagg(i,k)) .eq. 0._r8 ) then
+                 ratio = 0._r8
+              end if
+!- IH
            endif
            nsubs(i,k)=nsubs(i,k)*ratio
            nsagg(i,k)=nsagg(i,k)*ratio
@@ -2875,6 +2989,11 @@ subroutine micro_pumas_tend ( &
               ! note: prdg is always negative (like prds), so it needs to be subtracted in ratio
               ratio = (qg(i,k)*rdeltat + (pracg(i,k)+pgracs(i,k)+psacr(i,k)+mnuccr(i,k))*precip_frac(i,k) &
                        + (psacwg(i,k)+pgsacw(i,k))*lcldm(i,k)) / ((-prdg(i,k))*precip_frac(i,k)) * omsm
+!+ IH: The following code seems necessary to avoid ratio = infinity for CCPP-SCM-PUMAS to complete a test case
+              if ( precip_frac(i,k) .eq. 0._r8 .or. prdg(i,k) .eq. 0._r8 ) then
+                 ratio = 0._r8
+              end if
+!- IH
               prdg(i,k)= prdg(i,k)*ratio
            end if
         end do
@@ -3924,7 +4043,7 @@ end if
                  qitend(i,k)=((1._r8-dum)*dumi(i,k)-qi(i,k))*rdeltat
                  nitend(i,k)=((1._r8-dum)*dumni(i,k)-ni(i,k))*rdeltat
                  tlat(i,k)=tlat(i,k)-xlf*dum*dumi(i,k)*rdeltat
-              end if
+             end if
            end if
 
            ! homogeneously freeze droplets at -40 C
